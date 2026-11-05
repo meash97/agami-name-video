@@ -3,48 +3,63 @@ import cv2, numpy as np, os, json, subprocess
 h,w=1292,724; ANG=-20.5
 M=cv2.getRotationMatrix2D((w/2,h/2),ANG,1.0); Minv=cv2.invertAffineTransform(M)
 rot=cv2.imread('rot.png'); gray=cv2.cvtColor(rot,cv2.COLOR_BGR2GRAY).astype(np.float32)
-# ink alpha of USHA in rotated space
-y0,y1,x0,x1=583,627,128,218
-g=gray[y0:y1,x0:x1]; paper=np.percentile(g,85); ink=np.percentile(g,2)
-a=np.clip((paper-g)/(paper-ink),0,1)
-b=(a>0.45).astype(np.uint8); n,lab,st,_=cv2.connectedComponentsWithStats(b)
-keep=np.zeros_like(b)
-for i in range(1,n):
-    if st[i,cv2.CC_STAT_AREA]>=6: keep[lab==i]=1
-keep=cv2.dilate(keep,np.ones((3,3),np.uint8)); a=a*keep
-full=np.zeros((h,w),np.float32); full[y0:y1,x0:x1]=a
-erase=cv2.dilate((full>0.05).astype(np.uint8),cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5)))
-erase[:, 219:]=0
-erase_o=(cv2.warpAffine(erase.astype(np.float32),Minv,(w,h))>0.3).astype(np.uint8)
-inkmask_o=cv2.warpAffine(full,Minv,(w,h))>0.6
-blob=cv2.dilate(erase_o,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9))).astype(np.float32)
-feather=np.minimum(cv2.GaussianBlur(blob,(0,0),1.5),1)
-ys,xs=np.where(blob>0); Y0,Y1,X0,X1=ys.min()-30,ys.max()+30,xs.min()-30,xs.max()+30
-th=np.deg2rad(20.5); D=100
-f1=cv2.imread('frames/0001.png').astype(np.float32)
-T=np.float32([[1,0,D*np.cos(th)],[0,1,-D*np.sin(th)]])
-plate=cv2.warpAffine(f1,T,(w,h),flags=cv2.INTER_LINEAR,borderMode=cv2.BORDER_REFLECT)[Y0:Y1,X0:X1]
-SIG=8
+def ink_alpha(box, xcut=None):
+    y0,y1,x0,x1=box
+    g=gray[y0:y1,x0:x1]; paper=np.percentile(g,85); ink=np.percentile(g,2)
+    a=np.clip((paper-g)/(paper-ink),0,1)
+    b=(a>0.45).astype(np.uint8); n,lab,st,_=cv2.connectedComponentsWithStats(b)
+    keep=np.zeros_like(b)
+    for i in range(1,n):
+        if st[i,cv2.CC_STAT_AREA]>=6: keep[lab==i]=1
+    keep=cv2.dilate(keep,np.ones((3,3),np.uint8)); a=a*keep
+    full=np.zeros((h,w),np.float32); full[y0:y1,x0:x1]=a
+    if xcut: full[:, xcut:]=0
+    return full
+th=np.deg2rad(20.5); SIG=8
+def make_job(full, D, src_frame, first_frame):
+    erase=cv2.dilate((full>0.05).astype(np.uint8),cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5)))
+    erase_o=(cv2.warpAffine(erase.astype(np.float32),Minv,(w,h))>0.3).astype(np.uint8)
+    blob=cv2.dilate(erase_o,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9))).astype(np.float32)
+    feather=np.minimum(cv2.GaussianBlur(blob,(0,0),1.5),1)
+    ys,xs=np.where(blob>0); Y0,Y1,X0,X1=ys.min()-30,ys.max()+30,xs.min()-30,xs.max()+30
+    f1=cv2.imread(f'frames/{src_frame:04d}.png').astype(np.float32)
+    T=np.float32([[1,0,D*np.cos(th)],[0,1,-D*np.sin(th)]])
+    plate=cv2.warpAffine(f1,T,(w,h),flags=cv2.INTER_LINEAR,borderMode=cv2.BORDER_REFLECT)[Y0:Y1,X0:X1]
+    return dict(blob=blob,feather=feather,box=(Y0,Y1,X0,X1),plate=plate,first=first_frame,erase_o=erase_o)
+usha_full=ink_alpha((583,627,128,218),xcut=219)
+inkmask_o=cv2.warpAffine(usha_full,Minv,(w,h))>0.6
+jobs=[make_job(usha_full,100,1,1), make_job(ink_alpha((580,622,52,92)),45,1,165)]
+blob=jobs[0]['blob']; erase_o=jobs[0]['erase_o']
 def lowpass(img,mask):
     k=(1-mask)[...,None]
     return cv2.GaussianBlur(img*k,(0,0),SIG)/np.maximum(cv2.GaussianBlur(k,(0,0),SIG),1e-3)[...,None]
 def inkm(img):
     gg=cv2.cvtColor(img.astype(np.uint8),cv2.COLOR_BGR2GRAY).astype(np.float32)
     return cv2.dilate((gg<np.median(gg)-35).astype(np.uint8),np.ones((7,7),np.uint8)).astype(np.float32)
-lowP=lowpass(plate,inkm(plate))
+for J in jobs: J['lowP']=lowpass(J['plate'],inkm(J['plate']))
 ring=(cv2.dilate(blob,np.ones((25,25),np.uint8))>0)&(blob==0)
 _g=cv2.cvtColor(cv2.imread('frames/0241.png'),cv2.COLOR_BGR2GRAY); ring&=(_g>np.median(_g[ring])-25)  # paper only (no ink/doodles)
 os.makedirs('plate',exist_ok=True); inks=[]
 for i in range(1,242):
-    im=cv2.imread(f'frames/{i:04d}.png'); imf=im.astype(np.float32); roi=imf[Y0:Y1,X0:X1]
+    im=cv2.imread(f'frames/{i:04d}.png')
     px=im[inkmask_o].reshape(-1,3).astype(np.float32); lum=px.mean(1); inkc=np.median(px[lum<=np.percentile(lum,30)],axis=0)
     pp=im[ring].reshape(-1,3).astype(np.float32); pl=pp.mean(1); paperc=np.median(pp[pl>=np.percentile(pl,40)],axis=0)
     inks.append([round(float(v),3) for v in (inkc/paperc)[::-1]])  # RGB ink/paper ratio
-    lowF=lowpass(roi,np.maximum(blob[Y0:Y1,X0:X1],inkm(roi)))
-    relit=plate*np.clip(lowF/np.maximum(lowP,1),0.4,2.5)
-    fe=feather[Y0:Y1,X0:X1][...,None]
-    res=im.copy(); res[Y0:Y1,X0:X1]=np.clip(roi*(1-fe)+relit*fe,0,255).astype(np.uint8)
+    res=im.copy()
+    for J in jobs:
+        if i<J['first']: continue
+        Y0,Y1,X0,X1=J['box']; roi=res[Y0:Y1,X0:X1].astype(np.float32)
+        lowF=lowpass(roi,np.maximum(J['blob'][Y0:Y1,X0:X1],inkm(roi)))
+        relit=J['plate']*np.clip(lowF/np.maximum(J['lowP'],1),0.4,2.5)
+        fe=J['feather'][Y0:Y1,X0:X1][...,None]
+        res[Y0:Y1,X0:X1]=np.clip(roi*(1-fe)+relit*fe,0,255).astype(np.uint8)
     cv2.imwrite(f'plate/{i:04d}.png',res)
 json.dump(inks,open('inks.json','w'))
+import base64
+sp=ink_alpha((580,622,52,92)); ys,xs=np.where(sp>0.15); sy0,sy1,sx0,sx1=ys.min()-2,ys.max()+3,xs.min()-2,xs.max()+3
+a=sp[sy0:sy1,sx0:sx1]; a3=cv2.resize(a,None,fx=3,fy=3,interpolation=cv2.INTER_CUBIC); a3=np.clip(a3*1.3,0,1); a3=cv2.GaussianBlur(a3,(5,5),0.6)
+a8=(a3*255).astype(np.uint8); ok,buf=cv2.imencode('.png',np.dstack([np.full_like(a8,255)]*3+[a8]))
+json.dump([{'name':'sparkle','src':'data:image/png;base64,'+base64.b64encode(buf).decode(),'x':int(sx0),'y':int(sy0),'w':int(sx1-sx0),'h':int(sy1-sy0),'fromFrame':164}],open('decor.json','w'))
+print('sparkle box',sx0,sy0,sx1,sy1)
 subprocess.run('ffmpeg -v error -y -framerate 24 -i plate/%04d.png -i input.mp4 -map 0:v -map 1:a -c:v libx264 -preset slow -crf 19 -bf 0 -g 24 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest plate.mp4',shell=True,check=True)
 print('plate KB',os.path.getsize('plate.mp4')//1024, 'inks', inks[0], inks[-1])

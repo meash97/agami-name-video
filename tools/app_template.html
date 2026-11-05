@@ -89,7 +89,7 @@ const $ = id => document.getElementById(id);
 const view = $('view'), vctx = view.getContext('2d');
 const zoom = $('zoom'), zctx = zoom.getContext('2d');
 const src = $('src');
-let T = null, glyphImgs = {}, nameLayer = null, nameText = '', videoURL = {};
+let T = null, glyphImgs = {}, decorImgs = {}, nameLayer = null, nameText = '', videoURL = {};
 let audioCtx = null, audioDest = null, mediaSrcNode = null, busy = false, resultURL = null;
 
 
@@ -251,42 +251,57 @@ function buildNameLayer(text){
   };
   let {items, total} = layout(t.gap, t.space);
   if (!items.length) return null;
-  if (total > avail) ({items, total} = layout(t.minGap, t.minSpace));   // tighten spacing before shrinking
-  const scale = Math.min(1, avail / total);
+  if (total > avail){                                   // 1) tighten letter spacing, proportionally
+    let lo = t.minGap, hi = t.gap;
+    for (let k = 0; k < 8; k++){ const mid = (lo + hi) / 2; const r = layout(mid, t.minSpace + (t.space - t.minSpace) * (mid - t.minGap) / (t.gap - t.minGap)); if (r.total > avail) hi = mid; else { lo = mid; items = r.items; total = r.total; } }
+    if (total > avail) ({items, total} = layout(t.minGap, t.minSpace));
+  }
+  let xs = 1, scale = 1;                                // 2) condense letters (same height), 3) shrink only if still too long
+  if (total > avail){ xs = Math.max(t.minCondense, avail / total); }
+  if (total * xs > avail){ scale = avail / (total * xs); }
   const R = t.region;                               // layer region in level space (native px)
   const c = document.createElement('canvas'); c.width = R.w * SC; c.height = R.h * SC;
   const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high';
   const right = (t.anchor.right - R.x) * SC, base = (t.anchor.baseline - R.y) * SC;
-  const x0 = right - total * scale;
+  const x0 = right - total * xs * scale;
   for (const {g, x: gx} of items){
-    const w = g.w * scale, h = g.h * scale;
-    const left = x0 + (gx - t.pad) * scale;
+    const w = g.w * xs * scale, h = g.h * scale;
+    const left = x0 + (gx - t.pad) * xs * scale;
     const top = base + (g.dy - g.h + t.pad) * scale;
     cx.drawImage(g.img, left, top, w, h);
   }
-  return {canvas: c, scale};
+  return {canvas: c, scale, xs, left: R.x + x0 / SC};
 }
 
 /* ---------- compositing ---------- */
 const tint = document.createElement('canvas'), tctx = tint.getContext('2d');
 const col = document.createElement('canvas'), cctx = col.getContext('2d');
+// ink = how much the real pen darkens the paper (per channel), applied with "multiply"
+// so the drawn strokes follow the device's own colour rendering of the video
+function inkDraw(ctx, img, x, y, w, h, r){
+  if (tint.width !== img.width || tint.height !== img.height){ tint.width = col.width = img.width; tint.height = col.height = img.height; }
+  cctx.globalCompositeOperation = 'copy'; cctx.drawImage(img, 0, 0);
+  cctx.globalCompositeOperation = 'source-in'; cctx.fillStyle = `rgb(${r[0]},${r[1]},${r[2]})`; cctx.fillRect(0, 0, img.width, img.height);
+  tctx.globalCompositeOperation = 'source-over'; tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, img.width, img.height);
+  tctx.drawImage(col, 0, 0);
+  ctx.drawImage(tint, x, y, w, h);
+}
 function drawFrame(ctx, frameIdx, source = src){
   ctx.drawImage(source, 0, 0, T.w, T.h);
   if (!nameLayer) return;
-  const L = nameLayer.canvas;
-  if (tint.width !== L.width || tint.height !== L.height){ tint.width = col.width = L.width; tint.height = col.height = L.height; }
-  // ink = how much the real pen darkens the paper (per channel), applied with "multiply"
-  // so the name follows the device's own colour rendering of the video
-  const r = T.inks[Math.max(0, Math.min(T.inks.length - 1, frameIdx))].map(v => Math.round(Math.min(1, v) * 255));
-  cctx.globalCompositeOperation = 'copy'; cctx.drawImage(L, 0, 0);
-  cctx.globalCompositeOperation = 'source-in'; cctx.fillStyle = `rgb(${r[0]},${r[1]},${r[2]})`; cctx.fillRect(0, 0, L.width, L.height);
-  tctx.globalCompositeOperation = 'source-over'; tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, L.width, L.height);
-  tctx.drawImage(col, 0, 0);
+  const clamp = (arr) => arr[Math.max(0, Math.min(arr.length - 1, frameIdx))];
+  const r = clamp(T.inks).map(v => Math.round(Math.min(1, v) * 255));
   ctx.save();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const mv = T.motion ? clamp(T.motion) : [0, 0];
+  ctx.translate(mv[0], mv[1]);                      // page/ink drift measured from the original word
   ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
   ctx.globalCompositeOperation = 'multiply';
-  const R = T.region; ctx.drawImage(tint, R.x, R.y, R.w, R.h);
+  const R = T.region; inkDraw(ctx, nameLayer.canvas, R.x, R.y, R.w, R.h, r);
+  for (const d of decorImgs[T.id] || []){           // doodles lifted from the template; skipped when the name needs their space
+    if (frameIdx < d.fromFrame || nameLayer.left < d.x + d.w + 4) continue;
+    inkDraw(ctx, d.img, d.x, d.y, d.w, d.h, r);
+  }
   ctx.restore();
 }
 function drawZoom(){
@@ -319,6 +334,7 @@ async function selectTemplate(id){
     }));
     glyphImgs[T.glyphs] = out;
   }
+  if (!decorImgs[T.id]) decorImgs[T.id] = await Promise.all((T.decor || []).map(async d => ({...d, img: await loadImg(d.src)})));
   if (!videoURL[T.video]) videoURL[T.video] = b64ToBlobURL(VIDEOS[T.video]);
   if (src.src !== videoURL[T.video]){
     src.src = videoURL[T.video];
@@ -338,7 +354,8 @@ $('name').addEventListener('input', e => {
   nameLayer = T ? buildNameLayer(nameText) : null;
   const h = $('hint');
   if (dropped.trim()){ h.textContent = `Skipped: ${[...new Set(dropped.replace(/\s/g,''))].join(' ')} — only letters A–Z work.`; h.className = 'hint warn'; }
-  else if (nameLayer && nameLayer.scale < 0.999){ h.textContent = `Long name — written ${Math.round(nameLayer.scale * 100)}% size to fit.`; h.className = nameLayer.scale < 0.7 ? 'hint warn' : 'hint'; }
+  else if (nameLayer && nameLayer.scale < 0.999){ h.textContent = `Too long for this line — letters shrunk to ${Math.round(nameLayer.scale * 100)}%. Try a shorter form of the name.`; h.className = 'hint warn'; }
+  else if (nameLayer && nameLayer.xs < 0.999){ h.textContent = `Long name — written a little condensed to fit before "${T.suffix}".`; h.className = 'hint'; }
   else { h.textContent = 'Letters A–Z and spaces.'; h.className = 'hint'; }
   resetResult();
   showPreview(); updateGo();
