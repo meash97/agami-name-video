@@ -32,15 +32,19 @@ def inkm(img):
     gg=cv2.cvtColor(img.astype(np.uint8),cv2.COLOR_BGR2GRAY).astype(np.float32)
     return cv2.dilate((gg<np.median(gg)-35).astype(np.uint8),np.ones((7,7),np.uint8)).astype(np.float32)
 lowP=lowpass(plate,inkm(plate))
+ring=(cv2.dilate(blob,np.ones((25,25),np.uint8))>0)&(blob==0)
+_g=cv2.cvtColor(cv2.imread('frames/0241.png'),cv2.COLOR_BGR2GRAY); ring&=(_g>np.median(_g[ring])-25)  # paper only (no ink/doodles)
 os.makedirs('plate',exist_ok=True); inks=[]
 for i in range(1,242):
     im=cv2.imread(f'frames/{i:04d}.png'); imf=im.astype(np.float32); roi=imf[Y0:Y1,X0:X1]
-    px=im[inkmask_o].reshape(-1,3); lum=px.mean(1); inks.append([int(v) for v in np.median(px[lum<=np.percentile(lum,30)],axis=0)[::-1]])  # RGB
+    px=im[inkmask_o].reshape(-1,3).astype(np.float32); lum=px.mean(1); inkc=np.median(px[lum<=np.percentile(lum,30)],axis=0)
+    pp=im[ring].reshape(-1,3).astype(np.float32); pl=pp.mean(1); paperc=np.median(pp[pl>=np.percentile(pl,40)],axis=0)
+    inks.append([round(float(v),3) for v in (inkc/paperc)[::-1]])  # RGB ink/paper ratio
     lowF=lowpass(roi,np.maximum(blob[Y0:Y1,X0:X1],inkm(roi)))
     relit=plate*np.clip(lowF/np.maximum(lowP,1),0.4,2.5)
     fe=feather[Y0:Y1,X0:X1][...,None]
     res=im.copy(); res[Y0:Y1,X0:X1]=np.clip(roi*(1-fe)+relit*fe,0,255).astype(np.uint8)
     cv2.imwrite(f'plate/{i:04d}.png',res)
 json.dump(inks,open('inks.json','w'))
-subprocess.run('ffmpeg -v error -y -framerate 24 -i plate/%04d.png -i input.mp4 -map 0:v -map 1:a -c:v libx264 -preset slow -crf 19 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest plate.mp4',shell=True,check=True)
+subprocess.run('ffmpeg -v error -y -framerate 24 -i plate/%04d.png -i input.mp4 -map 0:v -map 1:a -c:v libx264 -preset slow -crf 19 -bf 0 -g 24 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart -shortest plate.mp4',shell=True,check=True)
 print('plate KB',os.path.getsize('plate.mp4')//1024, 'inks', inks[0], inks[-1])

@@ -269,18 +269,23 @@ function buildNameLayer(text){
 
 /* ---------- compositing ---------- */
 const tint = document.createElement('canvas'), tctx = tint.getContext('2d');
+const col = document.createElement('canvas'), cctx = col.getContext('2d');
 function drawFrame(ctx, frameIdx, source = src){
   ctx.drawImage(source, 0, 0, T.w, T.h);
   if (!nameLayer) return;
   const L = nameLayer.canvas;
-  if (tint.width !== L.width || tint.height !== L.height){ tint.width = L.width; tint.height = L.height; }
-  const ink = T.inks[Math.max(0, Math.min(T.inks.length - 1, frameIdx))];
-  tctx.globalCompositeOperation = 'copy'; tctx.drawImage(L, 0, 0);
-  tctx.globalCompositeOperation = 'source-in'; tctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`; tctx.fillRect(0, 0, L.width, L.height);
-  tctx.globalCompositeOperation = 'source-over';
+  if (tint.width !== L.width || tint.height !== L.height){ tint.width = col.width = L.width; tint.height = col.height = L.height; }
+  // ink = how much the real pen darkens the paper (per channel), applied with "multiply"
+  // so the name follows the device's own colour rendering of the video
+  const r = T.inks[Math.max(0, Math.min(T.inks.length - 1, frameIdx))].map(v => Math.round(Math.min(1, v) * 255));
+  cctx.globalCompositeOperation = 'copy'; cctx.drawImage(L, 0, 0);
+  cctx.globalCompositeOperation = 'source-in'; cctx.fillStyle = `rgb(${r[0]},${r[1]},${r[2]})`; cctx.fillRect(0, 0, L.width, L.height);
+  tctx.globalCompositeOperation = 'source-over'; tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, L.width, L.height);
+  tctx.drawImage(col, 0, 0);
   ctx.save();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
+  ctx.globalCompositeOperation = 'multiply';
   const R = T.region; ctx.drawImage(tint, R.x, R.y, R.w, R.h);
   ctx.restore();
 }

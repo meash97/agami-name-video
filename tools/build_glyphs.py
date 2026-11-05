@@ -1,6 +1,8 @@
 import cv2, numpy as np, json, base64
 rot=cv2.imread('rot.png'); gray=cv2.cvtColor(rot,cv2.COLOR_BGR2GRAY).astype(np.float32)
 SC=3
+import os
+BOOST=float(os.environ.get('BOOST','1.3'))
 bands={1:(574,632),2:(634,688),3:(694,752),4:(754,803)}
 L={1:[('U',133,152),('S',157,172),('H',176,192),('A',197,214),('J',234,254),('W',285,308),('I',312,317),('S',322,335),('H',338,352),('I',356,361),('N',366,380),('G',382,398),('Y',418,434),('O',436,451),('U',453,469),('A',491,508)],
    2:[('H',150,168),('A',171,190),('P',193,209),('P',212,228),('I',230,237),('E',241,257),('S',259,273),('T',275,294),('B',315,336),('I',340,345),('R',350,367),('H',385,401),('D',406,423)],
@@ -46,7 +48,7 @@ glyphs={}
 raw['I']=[raw['I'][i] for i in (0,1,2,4)]; raw['N']=[raw['N'][i] for i in (0,1,3)]
 def finish(a):  # -> 3x, boosted, softened
     a3=cv2.resize(a,(a.shape[1]*SC,a.shape[0]*SC),interpolation=cv2.INTER_CUBIC)
-    a3=np.clip(a3*1.6,0,1); a3=cv2.GaussianBlur(a3,(5,5),0.8)
+    a3=np.clip(a3*BOOST,0,1); a3=cv2.GaussianBlur(a3,(5,5),0.6)
     a3=cv2.copyMakeBorder(a3,3,3,3,3,cv2.BORDER_CONSTANT,0)
     return a3
 for c,lst in raw.items():
