@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AGAMI · Name Video Maker</title>
+<style>
+  :root{--bg:#f6f1ea;--card:#fffdf9;--ink:#2a2420;--muted:#857a70;--gold:#b88a3b;--gold2:#8d6526;--line:#e7ded2}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{padding:18px 18px 6px;text-align:center}
+  header h1{margin:0;font:600 20px/1.2 Georgia,"Times New Roman",serif;letter-spacing:.06em;color:var(--gold2)}
+  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+  main{max-width:980px;margin:0 auto;padding:10px 14px 40px;display:grid;gap:16px;grid-template-columns:1fr}
+  @media(min-width:820px){main{grid-template-columns:360px 1fr;align-items:start}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+  .tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;margin-bottom:16px}
+  .tpl{border:2px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;background:#fff;padding:0;text-align:left}
+  .tpl img{display:block;width:100%;aspect-ratio:724/1292;object-fit:cover}
+  .tpl span{display:block;font-size:12px;padding:5px 7px;color:var(--ink)}
+  .tpl.on{border-color:var(--gold)}
+  label{display:block;font-weight:600;margin:0 0 6px}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type=text]{flex:1;font-size:20px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;text-transform:uppercase;letter-spacing:.04em;background:#fff;color:var(--ink);min-width:0}
+  input[type=text]:focus{outline:2px solid var(--gold);border-color:transparent}
+  .suffix{font-size:18px;color:var(--muted);white-space:nowrap}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:6px;min-height:18px}
+  .hint.warn{color:#a34a1f}
+  button.main{width:100%;margin-top:14px;padding:14px;font-size:16px;font-weight:600;border:0;border-radius:12px;background:var(--gold);color:#fff;cursor:pointer}
+  button.main:disabled{opacity:.55;cursor:default}
+  button.ghost{padding:10px 14px;border:1px solid var(--gold);background:#fff;color:var(--gold2);border-radius:10px;font-weight:600;cursor:pointer;font-size:14px}
+  .bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:12px;display:none}
+  .bar i{display:block;height:100%;width:0;background:var(--gold);transition:width .15s linear}
+  .stage{position:relative;display:flex;justify-content:center}
+  canvas#view,video#result{width:100%;max-width:420px;height:auto;border-radius:12px;background:#ddd;display:block}
+  video#result{display:none}
+  .actions{display:none;gap:10px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+  .actions a,.actions button{text-decoration:none}
+  .zoomwrap{margin-top:12px;display:flex;justify-content:center}
+  canvas#zoom{width:100%;max-width:420px;border-radius:10px;border:1px solid var(--line);background:#eee}
+  .small{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+  video#src{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>AGAMI · Name Video Maker</h1>
+  <p>Pick a template, type a name, get the video.</p>
+</header>
+<main>
+  <section class="card">
+    <h2>1 · Template</h2>
+    <div class="tpls" id="tpls"></div>
+    <h2>2 · Name</h2>
+    <label for="name">Name on the note</label>
+    <div class="row"><input id="name" type="text" maxlength="16" placeholder="e.g. ATIKA" autocomplete="off" spellcheck="false"><span class="suffix" id="suffix">JI,</span></div>
+    <div class="hint" id="hint">Letters A–Z and spaces.</div>
+    <button class="main" id="go" disabled>Make video</button>
+    <div class="bar" id="bar"><i></i></div>
+    <div class="hint" id="status"></div>
+  </section>
+  <section class="card">
+    <h2 id="pvTitle">Preview</h2>
+    <div class="stage">
+      <canvas id="view"></canvas>
+      <video id="result" controls playsinline></video>
+    </div>
+    <div class="zoomwrap" id="zoomwrap"><canvas id="zoom"></canvas></div>
+    <div class="actions" id="actions">
+      <a class="ghost" id="dl" download>⬇ Download</a>
+      <button class="ghost" id="share">Share…</button>
+      <button class="ghost" id="again">Make another</button>
+    </div>
+    <div class="small" id="fmt"></div>
+  </section>
+</main>
+<video id="src" playsinline preload="auto"></video>
+
+<script>
+/* ---------- TEMPLATE DATA (generated) ---------- */
+const TEMPLATES = /*TEMPLATES*/[];
+const GLYPH_SETS = /*GLYPHS*/{};
+const VIDEOS = /*VIDEOS*/{};
+</script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const view = $('view'), vctx = view.getContext('2d');
+const zoom = $('zoom'), zctx = zoom.getContext('2d');
+const src = $('src');
+let T = null, glyphImgs = {}, nameLayer = null, nameText = '', videoURL = {};
+let audioCtx = null, audioDest = null, mediaSrcNode = null, busy = false, resultURL = null;
+
+
+/* ---------- tiny MP4 reader / writer (for our own templates) ---------- */
+const MP4 = (() => {
+  const rd32 = (u, o) => (u[o] << 24 | u[o+1] << 16 | u[o+2] << 8 | u[o+3]) >>> 0;
+  const rd16 = (u, o) => u[o] << 8 | u[o+1];
+  const type = (u, o) => String.fromCharCode(u[o], u[o+1], u[o+2], u[o+3]);
+  function boxes(u, start, end){
+    const out = []; let o = start;
+    while (o + 8 <= end){
+      let size = rd32(u, o), t = type(u, o + 4), hdr = 8;
+      if (size === 1){ size = rd32(u, o + 8) * 2 ** 32 + rd32(u, o + 12); hdr = 16; }
+      else if (size === 0) size = end - o;
+      out.push({t, s: o, b: o + hdr, e: o + size}); o += size;
+    }
+    return out;
+  }
+  const find = (u, box, path) => { let cur = [box]; for (const p of path){ const n = []; for (const c of cur) for (const k of boxes(u, c.b, c.e)) if (k.t === p) n.push(k); cur = n; } return cur; };
+  function readDescriptors(u, o, end, cb){        // MPEG-4 descriptors (esds)
+    while (o < end){
+      const tag = u[o++]; let len = 0, b;
+      do { b = u[o++]; len = (len << 7) | (b & 0x7f); } while (b & 0x80);
+      cb(tag, o, len);
+      if (tag === 3){ const fl = u[o + 2]; let p = o + 3; if (fl & 0x80) p += 2; if (fl & 0x40) p += 1 + u[p]; if (fl & 0x20) p += 2; readDescriptors(u, p, o + len, cb); }
+      else if (tag === 4) readDescriptors(u, o + 13, o + len, cb);
+      o += len;
+    }
+  }
+  function demux(buf){
+    const u = new Uint8Array(buf), top = {b: 0, e: u.length};
+    const moov = find(u, top, ['moov'])[0];
+    const tracks = [];
+    for (const trak of find(u, moov, ['trak'])){
+      const mdia = find(u, trak, ['mdia'])[0];
+      const hdlr = find(u, mdia, ['hdlr'])[0], kind = type(u, hdlr.b + 8);
+      const mdhd = find(u, mdia, ['mdhd'])[0]; const v = u[mdhd.b];
+      const timescale = rd32(u, mdhd.b + (v === 1 ? 20 : 12));
+      const stbl = find(u, mdia, ['minf', 'stbl'])[0];
+      const get = n => find(u, stbl, [n])[0];
+      const stsd = get('stsd'); const entry = boxes(u, stsd.b + 8, stsd.e)[0];
+      const t = {kind, timescale, codecTag: entry.t};
+      if (kind === 'vide'){
+        t.width = rd16(u, entry.b + 24); t.height = rd16(u, entry.b + 26);
+        const avcC = boxes(u, entry.b + 78, entry.e).find(x => x.t === 'avcC');
+        t.description = u.slice(avcC.b, avcC.e);
+        t.codec = 'avc1.' + [1, 2, 3].map(i => t.description[i].toString(16).padStart(2, '0')).join('');
+      } else if (kind === 'soun'){
+        t.channels = rd16(u, entry.b + 16); t.sampleRate = rd32(u, entry.b + 24) >>> 16;
+        const esds = boxes(u, entry.b + 28, entry.e).find(x => x.t === 'esds');
+        readDescriptors(u, esds.b + 4, esds.e, (tag, o, len) => { if (tag === 5) t.asc = u.slice(o, o + len); });
+      } else continue;
+      const stsz = get('stsz'), fixed = rd32(u, stsz.b + 4), n = rd32(u, stsz.b + 8);
+      const sizes = []; for (let i = 0; i < n; i++) sizes.push(fixed || rd32(u, stsz.b + 12 + i * 4));
+      const stco = get('stco'), co64 = get('co64'); const chunks = [];
+      if (stco){ const c = rd32(u, stco.b + 4); for (let i = 0; i < c; i++) chunks.push(rd32(u, stco.b + 8 + i * 4)); }
+      else { const c = rd32(u, co64.b + 4); for (let i = 0; i < c; i++) chunks.push(rd32(u, co64.b + 8 + i * 8) * 2 ** 32 + rd32(u, co64.b + 12 + i * 8)); }
+      const stsc = get('stsc'), sc = []; for (let i = 0, c = rd32(u, stsc.b + 4); i < c; i++) sc.push([rd32(u, stsc.b + 8 + i * 12), rd32(u, stsc.b + 12 + i * 12)]);
+      const stts = get('stts'), deltas = []; for (let i = 0, c = rd32(u, stts.b + 4); i < c; i++){ const cnt = rd32(u, stts.b + 8 + i * 8), d = rd32(u, stts.b + 12 + i * 8); for (let k = 0; k < cnt; k++) deltas.push(d); }
+      const stss = get('stss'); const keys = new Set(); if (stss) for (let i = 0, c = rd32(u, stss.b + 4); i < c; i++) keys.add(rd32(u, stss.b + 8 + i * 4) - 1);
+      const samples = []; let si = 0, ts = 0;
+      for (let ci = 0; ci < chunks.length; ci++){
+        let per = sc[0][1]; for (const [first, cnt] of sc) if (ci + 1 >= first) per = cnt;
+        let off = chunks[ci];
+        for (let k = 0; k < per && si < n; k++, si++){
+          samples.push({data: u.subarray(off, off + sizes[si]), dts: ts, dur: deltas[si] ?? deltas[deltas.length - 1], key: stss ? keys.has(si) : true});
+          off += sizes[si]; ts += deltas[si] ?? 0;
+        }
+      }
+      t.samples = samples; tracks.push(t);
+    }
+    return tracks;
+  }
+  /* writer */
+  const enc = new TextEncoder();
+  const u32 = v => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+  const u16 = v => [(v >>> 8) & 255, v & 255];
+  function box(t, ...parts){
+    const flat = []; let len = 8;
+    for (const p of parts){ const a = p instanceof Uint8Array ? p : Uint8Array.from(p); flat.push(a); len += a.length; }
+    const out = new Uint8Array(len); out.set(u32(len), 0); out.set(enc.encode(t), 4);
+    let o = 8; for (const a of flat){ out.set(a, o); o += a.length; } return out;
+  }
+  const full = (t, v, f, ...parts) => box(t, [v, (f >> 16) & 255, (f >> 8) & 255, f & 255], ...parts);
+  const MATRIX = [...u32(0x10000), ...u32(0), ...u32(0), ...u32(0), ...u32(0x10000), ...u32(0), ...u32(0), ...u32(0), ...u32(0x40000000)];
+  function descr(tag, bytes){ return [tag, 0x80, 0x80, 0x80, bytes.length, ...bytes]; }
+  function trak(id, tr, movieDur, offsets){
+    const isV = tr.kind === 'vide';
+    const tkhd = full('tkhd', 0, 3, u32(0), u32(0), u32(id), u32(0), u32(movieDur), u32(0), u32(0), u16(0), u16(0), u16(isV ? 0 : 0x100), u16(0), MATRIX, u32(isV ? tr.width << 16 : 0), u32(isV ? tr.height << 16 : 0));
+    const mdhd = full('mdhd', 0, 0, u32(0), u32(0), u32(tr.timescale), u32(tr.duration), u16(0x55c4), u16(0));
+    const hdlr = full('hdlr', 0, 0, u32(0), enc.encode(isV ? 'vide' : 'soun'), u32(0), u32(0), u32(0), enc.encode(isV ? 'VideoHandler\0' : 'SoundHandler\0'));
+    let entry;
+    if (isV){
+      entry = box('avc1', [0,0,0,0,0,0], u16(1), u16(0), u16(0), u32(0), u32(0), u32(0), u16(tr.width), u16(tr.height), u32(0x480000), u32(0x480000), u32(0), u16(1), new Uint8Array(32), u16(0x18), u16(0xffff), box('avcC', tr.description));
+    } else {
+      const dcd = [0x40, 0x15, 0, 0, 0, ...u32(128000), ...u32(128000), ...descr(5, [...tr.asc])];
+      const es = [...u16(0), 0, ...descr(4, dcd), ...descr(6, [2])];
+      entry = box('mp4a', [0,0,0,0,0,0], u16(1), u32(0), u32(0), u16(tr.channels), u16(16), u16(0), u16(0), u32(tr.sampleRate << 16), full('esds', 0, 0, descr(3, es)));
+    }
+    const S = tr.samples;
+    const stts = []; for (const s of S){ const l = stts[stts.length - 1]; if (l && l[1] === s.dur) l[0]++; else stts.push([1, s.dur]); }
+    const parts = [
+      full('stsd', 0, 0, u32(1), entry),
+      full('stts', 0, 0, u32(stts.length), ...stts.map(([c, d]) => [...u32(c), ...u32(d)])),
+      full('stsc', 0, 0, u32(1), u32(1), u32(1), u32(1)),
+      full('stsz', 0, 0, u32(0), u32(S.length), ...S.map(s => u32(s.data.length))),
+      full('stco', 0, 0, u32(S.length), ...offsets.map(o => u32(o)))
+    ];
+    if (isV) parts.splice(2, 0, full('stss', 0, 0, u32(S.filter(s => s.key).length), ...S.map((s, i) => s.key ? u32(i + 1) : null).filter(Boolean)));
+    const minf = box('minf', isV ? full('vmhd', 0, 1, [0,0,0,0,0,0,0,0]) : full('smhd', 0, 0, [0,0,0,0]),
+                     box('dinf', full('dref', 0, 0, u32(1), full('url ', 0, 1))), box('stbl', ...parts));
+    return box('trak', tkhd, box('mdia', mdhd, hdlr, minf));
+  }
+  function mux(tracks){       // tracks: [{kind, timescale, samples:[{data,dur,key}], ...}]
+    for (const t of tracks) t.duration = t.samples.reduce((a, s) => a + s.dur, 0);
+    const movieDur = Math.max(...tracks.map(t => Math.round(t.duration / t.timescale * 1000)));
+    const ftyp = box('ftyp', enc.encode('isom'), u32(512), enc.encode('isomiso2avc1mp41'));
+    const build = offs => box('moov', full('mvhd', 0, 0, u32(0), u32(0), u32(1000), u32(movieDur), u32(0x10000), u16(0x100), u16(0), u32(0), u32(0), MATRIX, new Uint8Array(24), u32(tracks.length + 1)),
+                              ...tracks.map((t, i) => trak(i + 1, t, Math.round(t.duration / t.timescale * 1000), offs[i])));
+    const zero = tracks.map(t => t.samples.map(() => 0));
+    const moovLen = build(zero).length;
+    let pos = ftyp.length + moovLen + 8; const offs = [];
+    for (const t of tracks){ const o = []; for (const s of t.samples){ o.push(pos); pos += s.data.length; } offs.push(o); }
+    const moov = build(offs);
+    const mdatLen = pos - ftyp.length - moovLen;
+    return new Blob([ftyp, moov, new Uint8Array(u32(mdatLen)), enc.encode('mdat'), ...tracks.flatMap(t => t.samples.map(s => s.data))], {type: 'video/mp4'});
+  }
+  return {demux, mux};
+})();
+
+/* ---------- helpers ---------- */
+function b64ToBlobURL(dataURL){
+  const [head, b64] = dataURL.split(',');
+  const mime = head.match(/data:(.*?);/)[1];
+  const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([u8], {type: mime}));
+}
+function loadImg(s){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = s; }); }
+function cleanName(s){ return s.toUpperCase().replace(/[^A-Z ]/g, '').replace(/\s+/g, ' ').trimStart(); }
+
+/* ---------- name layout (in the template's level/"de-rotated" space, at SC x resolution) ---------- */
+function buildNameLayer(text){
+  const t = T, SC = t.sc, set = glyphImgs[t.glyphs];
+  const name = text.trim();
+  if (!name) return null;
+  const avail = (t.anchor.right - t.anchor.left) * SC;
+  const layout = (gap, space) => {
+    const used = {}, items = []; let x = 0;
+    for (const ch of name){
+      if (ch === ' '){ x += space * SC; continue; }
+      const vs = set[ch]; if (!vs) continue;
+      const k = (used[ch] = (used[ch] ?? -1) + 1) % vs.length;
+      const g = vs[k];
+      if (items.length) x += gap * SC;
+      items.push({g, x}); x += g.w - 2 * t.pad;    // pad = transparent border around each glyph
+    }
+    return {items, total: x};
+  };
+  let {items, total} = layout(t.gap, t.space);
+  if (!items.length) return null;
+  if (total > avail) ({items, total} = layout(t.minGap, t.minSpace));   // tighten spacing before shrinking
+  const scale = Math.min(1, avail / total);
+  const R = t.region;                               // layer region in level space (native px)
+  const c = document.createElement('canvas'); c.width = R.w * SC; c.height = R.h * SC;
+  const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high';
+  const right = (t.anchor.right - R.x) * SC, base = (t.anchor.baseline - R.y) * SC;
+  const x0 = right - total * scale;
+  for (const {g, x: gx} of items){
+    const w = g.w * scale, h = g.h * scale;
+    const left = x0 + (gx - t.pad) * scale;
+    const top = base + (g.dy - g.h + t.pad) * scale;
+    cx.drawImage(g.img, left, top, w, h);
+  }
+  return {canvas: c, scale};
+}
+
+/* ---------- compositing ---------- */
+const tint = document.createElement('canvas'), tctx = tint.getContext('2d');
+function drawFrame(ctx, frameIdx, source = src){
+  ctx.drawImage(source, 0, 0, T.w, T.h);
+  if (!nameLayer) return;
+  const L = nameLayer.canvas;
+  if (tint.width !== L.width || tint.height !== L.height){ tint.width = L.width; tint.height = L.height; }
+  const ink = T.inks[Math.max(0, Math.min(T.inks.length - 1, frameIdx))];
+  tctx.globalCompositeOperation = 'copy'; tctx.drawImage(L, 0, 0);
+  tctx.globalCompositeOperation = 'source-in'; tctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`; tctx.fillRect(0, 0, L.width, L.height);
+  tctx.globalCompositeOperation = 'source-over';
+  ctx.save();
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
+  const R = T.region; ctx.drawImage(tint, R.x, R.y, R.w, R.h);
+  ctx.restore();
+}
+function drawZoom(){
+  const z = T.zoom; zoom.width = z.w * 2; zoom.height = z.h * 2;
+  zctx.imageSmoothingQuality = 'high';
+  zctx.drawImage(view, z.x, z.y, z.w, z.h, 0, 0, zoom.width, zoom.height);
+}
+
+/* ---------- preview (last frame) ---------- */
+let previewSeekPending = false;
+function seek(t){ return new Promise(res => { const done = () => { src.removeEventListener('seeked', done); res(); }; src.addEventListener('seeked', done); src.currentTime = t; }); }
+async function showPreview(){
+  if (busy || !T) return;
+  if (Math.abs(src.currentTime - T.previewTime) > 0.01){ if (previewSeekPending) return; previewSeekPending = true; await seek(T.previewTime); previewSeekPending = false; }
+  drawFrame(vctx, Math.round(T.previewTime * T.fps));
+  drawZoom();
+}
+
+/* ---------- template selection ---------- */
+async function selectTemplate(id){
+  T = TEMPLATES.find(t => t.id === id);
+  document.querySelectorAll('.tpl').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+  $('suffix').textContent = T.suffix || '';
+  $('name').maxLength = T.maxLen || 16;
+  view.width = T.w; view.height = T.h;
+  if (!glyphImgs[T.glyphs]){
+    const out = {}; const set = GLYPH_SETS[T.glyphs];
+    await Promise.all(Object.entries(set).map(async ([ch, vs]) => {
+      out[ch] = await Promise.all(vs.map(async v => ({...v, img: await loadImg(v.src)})));
+    }));
+    glyphImgs[T.glyphs] = out;
+  }
+  if (!videoURL[T.video]) videoURL[T.video] = b64ToBlobURL(VIDEOS[T.video]);
+  if (src.src !== videoURL[T.video]){
+    src.src = videoURL[T.video];
+    await new Promise(r => src.addEventListener('loadeddata', r, {once: true}));
+  }
+  nameLayer = buildNameLayer(nameText);
+  await showPreview();
+  updateGo();
+}
+
+/* ---------- name input ---------- */
+function updateGo(){ $('go').disabled = busy || !T || !nameText.trim(); }
+$('name').addEventListener('input', e => {
+  const raw = e.target.value, clean = cleanName(raw);
+  const dropped = raw.toUpperCase().replace(/[A-Z ]/g, '');
+  nameText = clean;
+  nameLayer = T ? buildNameLayer(nameText) : null;
+  const h = $('hint');
+  if (dropped.trim()){ h.textContent = `Skipped: ${[...new Set(dropped.replace(/\s/g,''))].join(' ')} — only letters A–Z work.`; h.className = 'hint warn'; }
+  else if (nameLayer && nameLayer.scale < 0.999){ h.textContent = `Long name — written ${Math.round(nameLayer.scale * 100)}% size to fit.`; h.className = nameLayer.scale < 0.7 ? 'hint warn' : 'hint'; }
+  else { h.textContent = 'Letters A–Z and spaces.'; h.className = 'hint'; }
+  resetResult();
+  showPreview(); updateGo();
+});
+
+
+/* ---------- frame-exact render with WebCodecs ---------- */
+const AVC_CODECS = ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640032', 'avc1.4d0032'];
+async function pickEncoder(){
+  if (!('VideoEncoder' in window) || !('VideoDecoder' in window)) return null;
+  for (const codec of AVC_CODECS){
+    const cfg = {codec, width: T.w, height: T.h, bitrate: 4_000_000, framerate: T.fps, avc: {format: 'avc'}};
+    try { const r = await VideoEncoder.isConfigSupported(cfg); if (r.supported) return r.config; } catch (e) {}
+  }
+  return null;
+}
+let demuxed = {};
+async function renderWebCodecs(encCfg, onProgress){
+  if (!demuxed[T.video]) demuxed[T.video] = MP4.demux(await (await fetch(videoURL[T.video])).arrayBuffer());
+  const [vt, at] = ['vide', 'soun'].map(k => demuxed[T.video].find(t => t.kind === k));
+  const canvas = document.createElement('canvas'); canvas.width = T.w; canvas.height = T.h;
+  const ctx = canvas.getContext('2d');
+  const outSamples = []; let desc = null, encErr = null, decErr = null;
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => {
+      if (meta?.decoderConfig?.description) desc = new Uint8Array(meta.decoderConfig.description);
+      const d = new Uint8Array(chunk.byteLength); chunk.copyTo(d);
+      outSamples.push({data: d, key: chunk.type === 'key'});
+    },
+    error: e => encErr = e
+  });
+  encoder.configure(encCfg);
+  const frameDur = 1e6 / T.fps; let idx = 0; const total = vt.samples.length;
+  const decoder = new VideoDecoder({
+    output: frame => {
+      drawFrame(ctx, idx, frame); frame.close();
+      const vf = new VideoFrame(canvas, {timestamp: Math.round(idx * frameDur), duration: Math.round(frameDur)});
+      encoder.encode(vf, {keyFrame: idx % (T.fps * 2) === 0}); vf.close();
+      idx++; onProgress(idx / total);
+    },
+    error: e => decErr = e
+  });
+  decoder.configure({codec: vt.codec, codedWidth: vt.width, codedHeight: vt.height, description: vt.description});
+  for (let i = 0; i < total; i++){
+    const s = vt.samples[i];
+    decoder.decode(new EncodedVideoChunk({type: s.key ? 'key' : 'delta', timestamp: Math.round(i * frameDur), data: s.data}));
+    while (decoder.decodeQueueSize > 4 || encoder.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+    if (decErr || encErr) throw (decErr || encErr);
+  }
+  await decoder.flush(); await encoder.flush();
+  decoder.close(); encoder.close();
+  if (decErr || encErr) throw (decErr || encErr);
+  const ts = 90000, step = Math.round(ts / T.fps);
+  const tracks = [{kind: 'vide', timescale: ts, width: T.w, height: T.h, description: desc, samples: outSamples.map(s => ({...s, dur: step}))}];
+  if (at) tracks.push({kind: 'soun', timescale: at.timescale, channels: at.channels, sampleRate: at.sampleRate, asc: at.asc, samples: at.samples});
+  return MP4.mux(tracks);
+}
+
+/* ---------- recording ---------- */
+function pickMime(){
+  const opts = ['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/webm;codecs=h264,opus','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  return opts.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+function resetResult(){
+  $('result').style.display = 'none'; view.style.display = 'block'; $('zoomwrap').style.display = 'flex';
+  $('actions').style.display = 'none'; $('pvTitle').textContent = 'Preview'; $('fmt').textContent = '';
+  if (resultURL){ URL.revokeObjectURL(resultURL); resultURL = null; }
+}
+async function makeVideo(){
+  if (busy || !nameLayer) return;
+  busy = true; updateGo(); resetResult();
+  $('bar').style.display = 'block'; const bar = $('bar').firstElementChild; bar.style.width = '0%';
+  $('status').className = 'hint'; $('status').textContent = 'Making video… keep this tab open.';
+  try{
+    const encCfg = window.__forceRecorder ? null : await pickEncoder();
+    if (encCfg){
+      const t0 = performance.now();
+      const blob = await renderWebCodecs(encCfg, p => bar.style.width = (p * 100).toFixed(1) + '%');
+      showResult(blob, 'video/mp4', 'mp4');
+      $('status').textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
+      window.__lastResult = {size: blob.size, type: 'video/mp4', mode: 'webcodecs', codec: encCfg.codec};
+      return;
+    }
+    const mime = pickMime();
+    if (!mime) throw new Error('this browser cannot make videos — please open the app in Chrome.');
+    $('status').textContent = 'Making video… keep this tab open (about ' + Math.ceil(src.duration) + ' s).';
+    if (!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      mediaSrcNode = audioCtx.createMediaElementSource(src);
+      audioDest = audioCtx.createMediaStreamDestination();
+      mediaSrcNode.connect(audioDest);               // not connected to speakers → silent while recording
+    }
+    await audioCtx.resume();
+    src.muted = false; src.volume = 1;
+    await seek(0);
+    drawFrame(vctx, 0);
+    const stream = new MediaStream([...view.captureStream(T.fps).getVideoTracks(), ...audioDest.stream.getAudioTracks()]);
+    const rec = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 128_000});
+    const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+    const stopped = new Promise(r => rec.onstop = r);
+    let running = true;
+    const onFrame = (now, meta) => {
+      if (!running) return;
+      drawFrame(vctx, Math.round(meta.mediaTime * T.fps));
+      bar.style.width = Math.min(100, meta.mediaTime / src.duration * 100) + '%';
+      src.requestVideoFrameCallback(onFrame);
+    };
+    const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+    let raf = 0;
+    const onRaf = () => { if (!running) return; drawFrame(vctx, Math.round(src.currentTime * T.fps)); bar.style.width = (src.currentTime / src.duration * 100) + '%'; raf = requestAnimationFrame(onRaf); };
+    rec.start(250);
+    if (hasRVFC) src.requestVideoFrameCallback(onFrame); else raf = requestAnimationFrame(onRaf);
+    await src.play();
+    await new Promise(r => src.addEventListener('ended', r, {once: true}));
+    drawFrame(vctx, T.inks.length - 1);
+    await new Promise(r => setTimeout(r, 200));
+    running = false; cancelAnimationFrame(raf);
+    rec.stop(); await stopped;
+    const type = mime.split(';')[0], ext = type === 'video/mp4' ? 'mp4' : 'webm';
+    const blob = new Blob(chunks, {type});
+    showResult(blob, type, ext);
+    $('status').textContent = 'Done.';
+    window.__lastResult = {size: blob.size, type, mode: 'recorder'};
+  } catch (err){
+    console.error(err); $('status').className = 'hint warn'; $('status').textContent = 'Something went wrong: ' + err.message;
+  } finally {
+    busy = false; $('bar').style.display = 'none'; updateGo();
+    src.pause();
+  }
+}
+function showResult(blob, type, ext){
+    resultURL = URL.createObjectURL(blob);
+    const fname = `${nameText.trim().replace(/\s+/g, '_')}_${(T.suffix || '').replace(/[^A-Za-z]/g,'') || 'Ji'}_${T.fileTag}.${ext}`;
+    const vid = $('result'); vid.src = resultURL; vid.style.display = 'block'; view.style.display = 'none'; $('zoomwrap').style.display = 'none';
+    $('pvTitle').textContent = 'Your video';
+    $('dl').href = resultURL; $('dl').download = fname;
+    $('actions').style.display = 'flex';
+    $('share').style.display = (navigator.canShare && navigator.canShare({files: [new File([blob], fname, {type})]})) ? '' : 'none';
+    $('share').onclick = () => navigator.share({files: [new File([blob], fname, {type})], title: fname}).catch(() => {});
+    $('fmt').textContent = `${fname} · ${(blob.size / 1048576).toFixed(1)} MB` + (ext === 'webm' ? ' · WebM (open in Chrome for MP4)' : '');
+}
+$('go').addEventListener('click', makeVideo);
+$('again').addEventListener('click', () => { resetResult(); showPreview(); $('name').select(); });
+
+/* ---------- boot ---------- */
+(async () => {
+  const box = $('tpls');
+  for (const t of TEMPLATES){
+    const b = document.createElement('button'); b.className = 'tpl'; b.dataset.id = t.id;
+    b.innerHTML = `<img alt="" src="${t.thumb}"><span>${t.title}</span>`;
+    b.onclick = () => !busy && selectTemplate(t.id);
+    box.appendChild(b);
+  }
+  await selectTemplate(TEMPLATES[0].id);
+  window.__ready = true;
+})();
+window.__setName = v => { const i = $('name'); i.value = v; i.dispatchEvent(new Event('input')); };
+window.__make = makeVideo;
+})();
+</script>
+</body>
+</html>
