@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>AGAMI · Name Video Maker</title>
+<meta name="theme-color" content="#b88a3b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Name Video">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <style>
   :root{--bg:#f6f1ea;--card:#fffdf9;--ink:#2a2420;--muted:#857a70;--gold:#b88a3b;--gold2:#8d6526;--line:#e7ded2}
   *{box-sizing:border-box}
@@ -40,6 +48,13 @@
   .zoomwrap{margin-top:12px;display:flex;justify-content:center}
   canvas#zoom{width:100%;max-width:420px;border-radius:10px;border:1px solid var(--line);background:#eee}
   .small{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+  #installbar{display:none;max-width:980px;margin:0 auto;padding:0 14px}
+  #installbar .card{display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fff8ea;border-color:#ecd9b4}
+  #installbar p{margin:0;font-size:13px;flex:1}
+  #installbar button{padding:8px 12px;border-radius:9px;border:0;background:var(--gold);color:#fff;font-weight:600;cursor:pointer}
+  #installbar .x{background:none;color:var(--muted);font-size:18px;padding:4px 8px}
+  #update{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;z-index:9;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+  #update button{margin-left:10px;background:var(--gold);color:#fff;border:0;border-radius:7px;padding:6px 10px;font-weight:600}
   video#src{display:none}
 </style>
 </head>
@@ -48,6 +63,7 @@
   <h1>AGAMI · Name Video Maker</h1>
   <p>Pick a template, type a name, get the video.</p>
 </header>
+<div id="installbar"><div class="card"><p id="installmsg"></p><button id="installbtn">Install</button><button class="x" id="installx" aria-label="Dismiss">×</button></div></div>
 <main>
   <section class="card">
     <h2>1 · Template</h2>
@@ -76,6 +92,40 @@
   </section>
 </main>
 <video id="src" playsinline preload="auto"></video>
+<div id="update">A new version is ready.<button id="reload">Update</button></div>
+<script>
+/* ---------- PWA: install prompt + offline cache ---------- */
+(() => {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const bar = document.getElementById('installbar'), msg = document.getElementById('installmsg'), btn = document.getElementById('installbtn');
+  const dismissed = () => { try { return localStorage.getItem('installDismissed') === '1'; } catch (e) { return false; } };
+  let deferred = null;
+  addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); deferred = e;
+    if (standalone || dismissed()) return;
+    msg.textContent = 'Install this app on your phone for one-tap access, even offline.'; btn.style.display = ''; bar.style.display = 'block';
+  });
+  btn.onclick = async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; bar.style.display = 'none'; };
+  document.getElementById('installx').onclick = () => { bar.style.display = 'none'; try { localStorage.setItem('installDismissed', '1'); } catch (e) {} };
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS && !standalone && !dismissed() && location.protocol.startsWith('http')){
+    msg.textContent = 'To install on iPhone: tap the Share button in Safari, then "Add to Home Screen".'; btn.style.display = 'none'; bar.style.display = 'block';
+  }
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        nw && nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) document.getElementById('update').style.display = 'block';
+        });
+      });
+    }).catch(() => {});
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!refreshing){ refreshing = true; location.reload(); } });
+    document.getElementById('reload').onclick = () => navigator.serviceWorker.getRegistration().then(r => r && r.waiting && r.waiting.postMessage('skipWaiting'));
+  }
+})();
+</script>
 
 <script>
 /* ---------- TEMPLATE DATA (generated) ---------- */
