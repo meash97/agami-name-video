@@ -245,7 +245,7 @@ function buildNameLayer(text){
       const k = (used[ch] = (used[ch] ?? -1) + 1) % vs.length;
       const g = vs[k];
       if (items.length) x += gap * SC;
-      items.push({g, x}); x += g.w - 2 * t.pad;    // pad = transparent border around each glyph
+      items.push({g, x}); x += g.vr - g.vl;         // advance by the letter's visible ink width
     }
     return {items, total: x};
   };
@@ -266,8 +266,8 @@ function buildNameLayer(text){
   const x0 = right - total * xs * scale;
   for (const {g, x: gx} of items){
     const w = g.w * xs * scale, h = g.h * scale;
-    const left = x0 + (gx - t.pad) * xs * scale;
-    const top = base + (g.dy - g.h + t.pad) * scale;
+    const left = x0 + (gx - g.vl) * xs * scale;    // place the visible left edge at the pen position
+    const top = base - g.base * scale;             // every letter's baseline row on the line's baseline
     cx.drawImage(g.img, left, top, w, h);
   }
   return {canvas: c, scale, xs, left: R.x + x0 / SC};
