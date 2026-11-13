@@ -69,7 +69,7 @@
     <h2>1 · Template</h2>
     <div class="tpls" id="tpls"></div>
     <h2>2 · Name</h2>
-    <label for="name">Name on the note</label>
+    <label for="name" id="namelabel">Name on the note</label>
     <div class="row"><input id="name" type="text" maxlength="16" autocomplete="off" spellcheck="false"><span class="suffix" id="suffix">JI,</span></div>
     <div class="hint" id="hint">Letters A–Z and spaces.</div>
     <button class="main" id="go" disabled>Make video</button>
@@ -284,18 +284,24 @@ function cleanName(s){ return s.toUpperCase().replace(/[^A-Z ]/g, '').replace(/\
 /* ---------- name layout (in the template's level/"de-rotated" space, at SC x resolution) ---------- */
 function buildNameLayer(text){
   const t = T, SC = t.sc, set = glyphImgs[t.glyphs];
-  const name = text.trim();
-  if (!name) return null;
+  if (!text.trim()) return null;
+  const name = text.trim().replace(/\s+/g, ' ') + (t.append || '');
+  const firstScale = t.firstScale || 1;
   const avail = (t.anchor.right - t.anchor.left) * SC;
   const layout = (gap, space) => {
-    const used = {}, items = []; let x = 0;
-    for (const ch of name){
-      if (ch === ' '){ x += space * SC; continue; }
+    const used = {}, items = []; let x = 0, wordStart = true, wordLen = 0;
+    const chars = [...name];
+    for (let i = 0; i < chars.length; i++){
+      const ch = chars[i];
+      if (ch === ' '){ x += space * SC; wordStart = true; continue; }
       const vs = set[ch]; if (!vs) continue;
+      if (wordStart){ wordLen = 0; for (let j = i; j < chars.length && /[A-Z]/.test(chars[j]); j++) wordLen++; }
+      const ls = (wordStart && wordLen >= 3) ? firstScale : 1;   // small-caps look: taller first letter on real words
       const k = (used[ch] = (used[ch] ?? -1) + 1) % vs.length;
       const g = vs[k];
-      if (items.length) x += gap * SC;
-      items.push({g, x}); x += g.vr - g.vl;         // advance by the letter's visible ink width
+      if (items.length && !wordStart) x += gap * SC;
+      items.push({g, x, ls}); x += (g.vr - g.vl) * ls;   // advance by the letter's visible ink width
+      wordStart = false;
     }
     return {items, total: x};
   };
@@ -313,11 +319,11 @@ function buildNameLayer(text){
   const c = document.createElement('canvas'); c.width = R.w * SC; c.height = R.h * SC;
   const cx = c.getContext('2d'); cx.imageSmoothingQuality = 'high';
   const right = (t.anchor.right - R.x) * SC, base = (t.anchor.baseline - R.y) * SC;
-  const x0 = right - total * xs * scale;
-  for (const {g, x: gx} of items){
-    const w = g.w * xs * scale, h = g.h * scale;
-    const left = x0 + (gx - g.vl) * xs * scale;    // place the visible left edge at the pen position
-    const top = base - g.base * scale;             // every letter's baseline row on the line's baseline
+  const x0 = t.align === 'left' ? (t.anchor.left - R.x) * SC : right - total * xs * scale;
+  for (const {g, x: gx, ls} of items){
+    const w = g.w * ls * xs * scale, h = g.h * ls * scale;
+    const left = x0 + (gx - g.vl * ls) * xs * scale;   // place the visible left edge at the pen position
+    const top = base - g.base * ls * scale;            // every letter's baseline row on the line's baseline
     cx.drawImage(g.img, left, top, w, h);
   }
   return {canvas: c, scale, xs, left: R.x + x0 / SC};
@@ -328,16 +334,21 @@ const tint = document.createElement('canvas'), tctx = tint.getContext('2d');
 const col = document.createElement('canvas'), cctx = col.getContext('2d');
 // ink = how much the real pen darkens the paper (per channel), applied with "multiply"
 // so the drawn strokes follow the device's own colour rendering of the video
-function inkDraw(ctx, img, x, y, w, h, r){
+function inkDraw(ctx, img, x, y, w, h, r, matteSrc){
   if (tint.width !== img.width || tint.height !== img.height){ tint.width = col.width = img.width; tint.height = col.height = img.height; }
   cctx.globalCompositeOperation = 'copy'; cctx.drawImage(img, 0, 0);
   cctx.globalCompositeOperation = 'source-in'; cctx.fillStyle = `rgb(${r[0]},${r[1]},${r[2]})`; cctx.fillRect(0, 0, img.width, img.height);
   tctx.globalCompositeOperation = 'source-over'; tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, img.width, img.height);
   tctx.drawImage(col, 0, 0);
+  if (matteSrc && T.matte){                         // hand in front of the name: whiten the ink there so nothing is drawn over the hand
+    const m = T.matte; tctx.globalCompositeOperation = 'lighten';
+    tctx.drawImage(matteSrc, m.sx, m.sy, m.w, m.h, 0, 0, img.width, img.height);
+    tctx.globalCompositeOperation = 'source-over';
+  }
   ctx.drawImage(tint, x, y, w, h);
 }
 function drawFrame(ctx, frameIdx, source = src){
-  ctx.drawImage(source, 0, 0, T.w, T.h);
+  ctx.drawImage(source, 0, 0, T.w, T.h, 0, 0, T.w, T.h);   // templates may carry a matte strip below the picture
   if (!nameLayer) return;
   const clamp = (arr) => arr[Math.max(0, Math.min(arr.length - 1, frameIdx))];
   const r = clamp(T.inks).map(v => Math.round(Math.min(1, v) * 255));
@@ -347,7 +358,7 @@ function drawFrame(ctx, frameIdx, source = src){
   ctx.translate(mv[0], mv[1]);                      // page/ink drift measured from the original word
   ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
   ctx.globalCompositeOperation = 'multiply';
-  const R = T.region; inkDraw(ctx, nameLayer.canvas, R.x, R.y, R.w, R.h, r);
+  const R = T.region; inkDraw(ctx, nameLayer.canvas, R.x, R.y, R.w, R.h, r, source);
   for (const d of decorImgs[T.id] || []){           // doodles lifted from the template; skipped when the name needs their space
     if (frameIdx < d.fromFrame || nameLayer.left < d.x + d.w + 4) continue;
     inkDraw(ctx, d.img, d.x, d.y, d.w, d.h, r);
@@ -374,7 +385,8 @@ async function showPreview(){
 async function selectTemplate(id){
   T = TEMPLATES.find(t => t.id === id);
   document.querySelectorAll('.tpl').forEach(b => b.classList.toggle('on', b.dataset.id === id));
-  $('suffix').textContent = T.suffix || '';
+  $('suffix').textContent = T.suffix || ''; $('namelabel').textContent = T.label || 'Name on the note';
+  $('hint').textContent = T.help || 'Letters A–Z and spaces.'; $('hint').className = 'hint';
   $('name').maxLength = T.maxLen || 16;
   view.width = T.w; view.height = T.h;
   if (!glyphImgs[T.glyphs]){
@@ -405,8 +417,8 @@ $('name').addEventListener('input', e => {
   const h = $('hint');
   if (dropped.trim()){ h.textContent = `Skipped: ${[...new Set(dropped.replace(/\s/g,''))].join(' ')} — only letters A–Z work.`; h.className = 'hint warn'; }
   else if (nameLayer && nameLayer.scale < 0.999){ h.textContent = `Too long for this line — letters shrunk to ${Math.round(nameLayer.scale * 100)}%. Try a shorter form of the name.`; h.className = 'hint warn'; }
-  else if (nameLayer && nameLayer.xs < 0.999){ h.textContent = `Long name — written a little condensed to fit before "${T.suffix}".`; h.className = 'hint'; }
-  else { h.textContent = 'Letters A–Z and spaces.'; h.className = 'hint'; }
+  else if (nameLayer && nameLayer.xs < 0.999){ h.textContent = 'Long name — written a little condensed to fit the line.'; h.className = 'hint'; }
+  else { h.textContent = T.help || 'Letters A–Z and spaces.'; h.className = 'hint'; }
   resetResult();
   showPreview(); updateGo();
 });
@@ -538,7 +550,8 @@ async function makeVideo(){
 }
 function showResult(blob, type, ext){
     resultURL = URL.createObjectURL(blob);
-    const fname = `${nameText.trim().replace(/\s+/g, '_')}_${(T.suffix || '').replace(/[^A-Za-z]/g,'') || 'Ji'}_${T.fileTag}.${ext}`;
+    const sfx = (T.suffix || '').replace(/[^A-Za-z]/g, '');
+    const fname = `${nameText.trim().replace(/\s+/g, '_')}${sfx ? '_' + sfx : ''}_${T.fileTag}.${ext}`;
     const vid = $('result'); vid.src = resultURL; vid.style.display = 'block'; view.style.display = 'none'; $('zoomwrap').style.display = 'none';
     $('pvTitle').textContent = 'Your video';
     $('dl').href = resultURL; $('dl').download = fname;

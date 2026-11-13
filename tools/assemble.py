@@ -12,8 +12,33 @@ tpl=[{
   'zoom':{'x':20,'y':560,'w':360,'h':200},
   'previewTime':9.95,'inks':inks,'motion':motion,'decor':decor}]
 vid='data:video/mp4;base64,'+base64.b64encode(open('plate.mp4','rb').read()).decode()
+# ---- anniversary template
+import pickle, numpy as np
+AD='/home/claude/anniv/'
+ag=pickle.load(open(AD+'glyphs_all.pkl','rb')); pick={'A':[0,1,2,3],'S':[0,1,2,4]}
+aglyphs={}
+for c,vs in ag.items():
+    aglyphs[c]=[]
+    for k in pick.get(c,range(min(4,len(vs)))):
+        g=vs[k]; al=(g['a']*255).astype(np.uint8); ok,b2=cv2.imencode('.png',np.dstack([np.full_like(al,255)]*3+[al]))
+        aglyphs[c].append({'src':'data:image/png;base64,'+base64.b64encode(b2).decode(),'w':al.shape[1],'h':al.shape[0],'base':g['base'],'vl':g['vl'],'vr':g['vr']})
+reg=json.load(open(AD+'reg.json'))
+ath=cv2.resize(cv2.imread(AD+'plate/0241.png')[:1292],(181,323),interpolation=cv2.INTER_AREA); ok,ab=cv2.imencode('.jpg',ath,[cv2.IMWRITE_JPEG_QUALITY,80])
+tpl.append({
+  'id':'anniv-sketchbook-1','title':'Anniversary · Sketchbook','fileTag':'Anniversary',
+  'video':'anniv1','glyphs':'sketchbook-hand','thumb':'data:image/jpeg;base64,'+base64.b64encode(ab).decode(),
+  'w':724,'h':1292,'fps':24,'angle':23.75,'sc':3,'pad':3,
+  'align':'left','append':',','firstScale':1.2,
+  'anchor':{'left':158,'right':716,'baseline':528},
+  'gap':2,'space':14,'minGap':1,'minSpace':8,'minCondense':0.8,'suffix':'','maxLen':40,
+  'label':'Names on the note','help':'Type the whole first line, e.g. both names with JI and the surname. Letters A–Z and spaces.',
+  'region':{'x':reg['x'],'y':reg['y'],'w':reg['w'],'h':reg['h']},
+  'matte':{'sx':0,'sy':1300,'w':reg['w'],'h':reg['h']},
+  'zoom':{'x':80,'y':350,'w':600,'h':330},
+  'previewTime':9.95,'inks':json.load(open(AD+'inks.json')),'motion':json.load(open(AD+'motion.json'))})
+avid='data:video/mp4;base64,'+base64.b64encode(open(AD+'plate.mp4','rb').read()).decode()
 s=open('app_template.html').read()
-s=s.replace('/*TEMPLATES*/[]',json.dumps(tpl)).replace('/*GLYPHS*/{}',json.dumps({'notebook-hand':glyphs})).replace('/*VIDEOS*/{}',json.dumps({'bday1':vid}))
+s=s.replace('/*TEMPLATES*/[]',json.dumps(tpl)).replace('/*GLYPHS*/{}',json.dumps({'notebook-hand':glyphs,'sketchbook-hand':aglyphs})).replace('/*VIDEOS*/{}',json.dumps({'bday1':vid,'anniv1':avid}))
 open('/home/claude/AGAMI-Name-Video-Maker.html','w').write(s)
 import hashlib
 ver=hashlib.sha1(s.encode()).hexdigest()[:10]
