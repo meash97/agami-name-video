@@ -51,7 +51,7 @@ raw['I']=[raw['I'][i] for i in (0,1,2,4)]; raw['N']=[raw['N'][i] for i in (0,1,3
 
 def finish(e):
     a=e['a']; above=e['vb']-e['desc']-e['vt']+1
-    s=TARGET/above
+    s=e.get('s') or TARGET/above
     a=cv2.resize(a,None,fx=s,fy=s,interpolation=cv2.INTER_AREA if s<1 else cv2.INTER_LINEAR)
     a3=cv2.resize(a,(a.shape[1]*SC,a.shape[0]*SC),interpolation=cv2.INTER_CUBIC)
     a3=np.clip((a3*BOOST-THR)/(1-THR),0,1); a3=cv2.GaussianBlur(a3,(5,5),0.6)
@@ -60,6 +60,8 @@ def finish(e):
     base=PAD+(e['vb']-e['desc']+1)*s*SC
     return dict(a=a3, base=round(base,1), vl=round(PAD+e['vl']*s*SC,1), vr=round(PAD+(e['vr']+1)*s*SC,1))
 glyphs={c:[finish(e) for e in lst] for c,lst in raw.items()}
+ce=extract(262,276,604,630,','); ce['desc']=max(0,(ce['vb']+ce['y0'])-618); ce['s']=1.0     # the comma after 'JI'
+glyphs[',']=[finish(ce)]; print('comma right edge (level x)',262-1+ce['vr']+1,'desc',ce['desc'])
 
 # synthetic letters the note lacks
 sw=3.2; rng=np.random.default_rng(7)

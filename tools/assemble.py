@@ -1,14 +1,14 @@
 import json, base64, cv2
 glyphs=json.load(open('glyphs.json')); inks=json.load(open('inks.json')); motion=json.load(open('motion.json')); decor=json.load(open('decor.json'))
-th=cv2.imread('plate/0241.png'); th=cv2.resize(th,(181,323),interpolation=cv2.INTER_AREA)
+th=cv2.imread('plate/0241.png')[:1292]; th=cv2.resize(th,(181,323),interpolation=cv2.INTER_AREA)
 ok,buf=cv2.imencode('.jpg',th,[cv2.IMWRITE_JPEG_QUALITY,80])
 tpl=[{
   'id':'bday-notebook-1','title':'Birthday · Notebook','fileTag':'Birthday',
   'video':'bday1','glyphs':'notebook-hand','thumb':'data:image/jpeg;base64,'+base64.b64encode(buf).decode(),
   'w':724,'h':1292,'fps':24,'angle':20.5,'sc':3,'pad':3,
-  'anchor':{'right':217,'left':12,'baseline':618},
-  'gap':3.5,'space':10,'minGap':1.5,'minSpace':6,'minCondense':0.8,'suffix':'JI,','maxLen':16,
-  'region':{'x':0,'y':540,'w':240,'h':110},
+  'anchor':{'right':272,'left':12,'baseline':618},'append':',',
+  'gap':3.5,'space':10,'minGap':1.5,'minSpace':6,'minCondense':0.8,'suffix':'','maxLen':22,'help':'Type the name as it should appear — add JI yourself if you want it. Letters A–Z and spaces.',
+  'region':{'x':0,'y':540,'w':290,'h':110},'matte':{'sx':0,'sy':1300,'w':290,'h':110},
   'zoom':{'x':20,'y':560,'w':360,'h':200},
   'previewTime':9.95,'inks':inks,'motion':motion,'decor':decor}]
 vid='data:video/mp4;base64,'+base64.b64encode(open('plate.mp4','rb').read()).decode()

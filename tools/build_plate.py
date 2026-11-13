@@ -28,7 +28,7 @@ def make_job(full, D, src_frame, first_frame):
     return dict(blob=blob,feather=feather,box=(Y0,Y1,X0,X1),plate=plate,first=first_frame,erase_o=erase_o)
 usha_full=ink_alpha((583,627,128,218),xcut=219)
 inkmask_o=cv2.warpAffine(usha_full,Minv,(w,h))>0.6
-jobs=[make_job(usha_full,100,1,1), make_job(ink_alpha((580,622,52,92)),45,1,165)]
+jobs=[make_job(usha_full,100,1,1), make_job(ink_alpha((580,622,52,92)),45,1,165), make_job(ink_alpha((574,636,224,277)),170,1,1)]   # name, sparkle, 'JI,'
 blob=jobs[0]['blob']; erase_o=jobs[0]['erase_o']
 def lowpass(img,mask):
     k=(1-mask)[...,None]
@@ -39,6 +39,21 @@ def inkm(img):
 for J in jobs: J['lowP']=lowpass(J['plate'],inkm(J['plate']))
 ring=(cv2.dilate(blob,np.ones((25,25),np.uint8))>0)&(blob==0)
 _g=cv2.cvtColor(cv2.imread('frames/0241.png'),cv2.COLOR_BGR2GRAY); ring&=(_g>np.median(_g[ring])-25)  # paper only (no ink/doodles)
+# hand/nib matte for the first frames (the pen is still finishing 'I,' right where the name ends)
+REG=dict(x=0,y=540,w=290,h=110); MATTE_UNTIL=22
+motion=json.load(open('motion.json'))
+refb=cv2.GaussianBlur(cv2.imread('frames/0045.png').astype(np.float32),(0,0),1.2)
+cb=np.array([[0,540],[290,540],[290,650],[0,650]],np.float32); cbf=(Minv[:,:2]@cb.T+Minv[:,2:]).T
+MX0,MY0=max(0,int(cbf[:,0].min())-30),max(0,int(cbf[:,1].min())-30); MX1,MY1=min(w,int(cbf[:,0].max())+30),min(h,int(cbf[:,1].max())+30)
+def hand_matte(f):
+    d=np.abs(cv2.GaussianBlur(f,(0,0),1.2)-refb)[MY0:MY1,MX0:MX1].max(2)
+    m=(d>26).astype(np.uint8); m=cv2.morphologyEx(m,cv2.MORPH_OPEN,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(7,7)))
+    n,lab,st,_=cv2.connectedComponentsWithStats(m); k=np.zeros_like(m)
+    for j in range(1,n):
+        if st[j,cv2.CC_STAT_AREA]>=250: k[lab==j]=1
+    k=cv2.morphologyEx(k,cv2.MORPH_CLOSE,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(15,15)))
+    k=cv2.dilate(k,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(7,7)))
+    out=np.zeros((h,w),np.float32); out[MY0:MY1,MX0:MX1]=k; return out
 os.makedirs('plate',exist_ok=True); inks=[]
 for i in range(1,242):
     im=cv2.imread(f'frames/{i:04d}.png')
@@ -46,14 +61,18 @@ for i in range(1,242):
     pp=im[ring].reshape(-1,3).astype(np.float32); pl=pp.mean(1); paperc=np.median(pp[pl>=np.percentile(pl,40)],axis=0)
     inks.append([round(float(v),3) for v in (inkc/paperc)[::-1]])  # RGB ink/paper ratio
     res=im.copy()
+    hm=hand_matte(im.astype(np.float32)) if i<=MATTE_UNTIL else np.zeros((h,w),np.float32); hmd=cv2.dilate(hm,np.ones((9,9),np.uint8)); keepf=1-np.minimum(cv2.GaussianBlur(hm,(0,0),1.0),1)
     for J in jobs:
         if i<J['first']: continue
         Y0,Y1,X0,X1=J['box']; roi=res[Y0:Y1,X0:X1].astype(np.float32)
-        lowF=lowpass(roi,np.maximum(J['blob'][Y0:Y1,X0:X1],inkm(roi)))
+        lowF=lowpass(roi,np.maximum(np.maximum(J['blob'][Y0:Y1,X0:X1],inkm(roi)),hmd[Y0:Y1,X0:X1]))
         relit=J['plate']*np.clip(lowF/np.maximum(J['lowP'],1),0.4,2.5)
-        fe=J['feather'][Y0:Y1,X0:X1][...,None]
+        fe=(J['feather']*keepf)[Y0:Y1,X0:X1][...,None]
         res[Y0:Y1,X0:X1]=np.clip(roi*(1-fe)+relit*fe,0,255).astype(np.uint8)
-    cv2.imwrite(f'plate/{i:04d}.png',res)
+    mv=motion[i-1]; hm_s=cv2.warpAffine(hm,np.float32([[1,0,-mv[0]],[0,1,-mv[1]]]),(w,h))
+    strip=cv2.warpAffine(hm_s,M,(w,h),flags=cv2.INTER_LINEAR)[REG['y']:REG['y']+REG['h'],REG['x']:REG['x']+REG['w']]
+    out=np.zeros((h+8+REG['h'],w,3),np.uint8); out[:h]=res; out[h+8:,:REG['w']]=(np.clip(strip,0,1)*255).astype(np.uint8)[...,None]
+    cv2.imwrite(f'plate/{i:04d}.png',out)
 json.dump(inks,open('inks.json','w'))
 import base64
 sp=ink_alpha((580,622,52,92)); ys,xs=np.where(sp>0.15); sy0,sy1,sx0,sx1=ys.min()-2,ys.max()+3,xs.min()-2,xs.max()+3
