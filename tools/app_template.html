@@ -326,7 +326,7 @@ function buildNameLayer(text){
     const top = base - g.base * ls * scale;            // every letter's baseline row on the line's baseline
     cx.drawImage(g.img, left, top, w, h);
   }
-  return {canvas: c, scale, xs, left: R.x + x0 / SC};
+  return {canvas: c, scale, xs, left: R.x + x0 / SC, width: total * xs * scale / SC};
 }
 
 /* ---------- compositing ---------- */
@@ -358,7 +358,13 @@ function drawFrame(ctx, frameIdx, source = src){
   ctx.translate(mv[0], mv[1]);                      // page/ink drift measured from the original word
   ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
   ctx.globalCompositeOperation = 'multiply';
-  const R = T.region; inkDraw(ctx, nameLayer.canvas, R.x, R.y, R.w, R.h, r, source);
+  const R = T.region;
+  const rv = T.reveal ? clamp(T.reveal) : 1;      // templates where the name is written on during the video
+  if (rv > 0){
+    if (rv < 1){ ctx.save(); ctx.beginPath(); ctx.rect(R.x, R.y, nameLayer.left - R.x + rv * nameLayer.width, R.h); ctx.clip(); }
+    inkDraw(ctx, nameLayer.canvas, R.x, R.y, R.w, R.h, r, source);
+    if (rv < 1) ctx.restore();
+  }
   for (const d of decorImgs[T.id] || []){           // doodles lifted from the template; skipped when the name needs their space
     if (frameIdx < d.fromFrame || nameLayer.left < d.x + d.w + 4) continue;
     inkDraw(ctx, d.img, d.x, d.y, d.w, d.h, r);
