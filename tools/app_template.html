@@ -296,7 +296,9 @@ function buildNameLayer(text){
       if (ch === ' '){ x += space * SC; wordStart = true; continue; }
       const vs = set[ch]; if (!vs) continue;
       if (wordStart){ wordLen = 0; for (let j = i; j < chars.length && /[A-Z]/.test(chars[j]); j++) wordLen++; }
-      const ls = (wordStart && wordLen >= 3) ? firstScale : 1;   // small-caps look: taller first letter on real words
+      const px = (t.anchor.left || 0) + x / SC;                    // level x of this letter (left-aligned layouts)
+      const ps = t.persp ? 1 + t.persp.k * (px - t.persp.x0) : 1;   // page perspective: letters shrink along the line
+      const ls = ((wordStart && wordLen >= 3) ? firstScale : 1) * ps;   // small-caps look: taller first letter on real words
       const k = (used[ch] = (used[ch] ?? -1) + 1) % vs.length;
       const g = vs[k];
       if (items.length && !wordStart) x += gap * SC;
@@ -354,9 +356,14 @@ function drawFrame(ctx, frameIdx, source = src){
   const r = clamp(T.inks).map(v => Math.round(Math.min(1, v) * 255));
   ctx.save();
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  const mv = T.motion ? clamp(T.motion) : [0, 0];
-  ctx.translate(mv[0], mv[1]);                      // page/ink drift measured from the original word
-  ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
+  if (T.cam){                                       // full per-frame camera move (ref -> frame) and page plane (level -> ref)
+    const c = clamp(T.cam); ctx.transform(c[0][0], c[1][0], c[0][1], c[1][1], c[0][2], c[1][2]);
+    const l = T.l2r; ctx.transform(l[0][0], l[1][0], l[0][1], l[1][1], l[0][2], l[1][2]);
+  } else {
+    const mv = T.motion ? clamp(T.motion) : [0, 0];
+    ctx.translate(mv[0], mv[1]);                    // page/ink drift measured from the original word
+    ctx.translate(T.w / 2, T.h / 2); ctx.rotate(-T.angle * Math.PI / 180); ctx.translate(-T.w / 2, -T.h / 2);
+  }
   ctx.globalCompositeOperation = 'multiply';
   const R = T.region;
   const rv = T.reveal ? clamp(T.reveal) : 1;      // templates where the name is written on during the video

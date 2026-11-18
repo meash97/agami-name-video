@@ -37,33 +37,35 @@ tpl.append({
   'zoom':{'x':80,'y':350,'w':600,'h':330},
   'previewTime':9.95,'inks':json.load(open(AD+'inks.json')),'motion':json.load(open(AD+'motion.json'))})
 avid='data:video/mp4;base64,'+base64.b64encode(open(AD+'plate.mp4','rb').read()).decode()
-# ---- thank-you template
-TD='/home/claude/t3/'
+# ---- thank-you template (printed note with the new AGAMI logo)
+TD='/home/claude/t4/'
+import sys as _s; _s.path.insert(0,TD); import importlib, common as _c4; importlib.reload(_c4)
 tg=pickle.load(open(TD+'glyphs_all.pkl','rb')); tglyphs={}
 for c,vs in tg.items():
-    if c=='i': continue
     tglyphs[c]=[]
     for g in vs[:4]:
         al=(g['a']*255).astype(np.uint8); ok,b3=cv2.imencode('.png',np.dstack([np.full_like(al,255)]*3+[al]))
         tglyphs[c].append({'src':'data:image/png;base64,'+base64.b64encode(b3).decode(),'w':al.shape[1],'h':al.shape[0],'base':g['base'],'vl':g['vl'],'vr':g['vr']})
 treg=json.load(open(TD+'reg.json')); tinks=json.load(open(TD+'inks.json'))
-fv=next(v for v in tinks if v); tinks=[v if v else fv for v in tinks]
 tth=cv2.resize(cv2.imread(TD+'plate/0241.png')[:1280],(181,322),interpolation=cv2.INTER_AREA); ok,tb=cv2.imencode('.jpg',tth,[cv2.IMWRITE_JPEG_QUALITY,80])
+l2r=_c4.Minv.astype(float).round(6).tolist()
+tcam=[[[round(float(v),5) for v in row] for row in c] for c in json.load(open(TD+'cam.json'))]
 tpl.append({
-  'id':'thanks-gold-1','title':'Thank You · Agami','fileTag':'ThankYou',
-  'video':'thanks1','glyphs':'thanks-hand','thumb':'data:image/jpeg;base64,'+base64.b64encode(tb).decode(),
-  'w':720,'h':1280,'fps':24,'angle':22.0,'sc':3,'pad':3,
-  'align':'left','append':'.','firstScale':1.18,
-  'anchor':{'left':236,'right':612,'baseline':642},
-  'gap':2,'space':12,'minGap':1,'minSpace':7,'minCondense':0.8,'suffix':'','maxLen':34,
-  'label':'Name after "Dear"','help':'Type the name as it should appear after "Dear", e.g. SANTOSH JI CHHAJAR. Letters A–Z and spaces.',
+  'id':'thanks-agami-2','title':'Thank You · Agami','fileTag':'ThankYou',
+  'video':'thanks2','glyphs':'thanks-print','thumb':'data:image/jpeg;base64,'+base64.b64encode(tb).decode(),
+  'w':720,'h':1280,'fps':24,'angle':0,'sc':3,'pad':3,
+  'align':'left','append':',','firstScale':1.0,
+  'anchor':{'left':239,'right':660,'baseline':578},
+  'persp':{'k':-0.000117,'x0':150},
+  'gap':2.6,'space':13.5,'minGap':1.2,'minSpace':8,'minCondense':0.82,'suffix':'','maxLen':34,
+  'label':'Name after "Dear"','help':'Type the name as it should appear after "Dear", e.g. SANTOSH JI CHHAJER. Letters A–Z and spaces.',
   'region':{'x':treg['x'],'y':treg['y'],'w':treg['w'],'h':treg['h']},
   'matte':{'sx':0,'sy':1288,'w':treg['w'],'h':treg['h']},
-  'zoom':{'x':150,'y':470,'w':520,'h':300},
-  'previewTime':9.95,'inks':tinks,'motion':json.load(open(TD+'motion.json')),'reveal':json.load(open(TD+'progress.json'))})
+  'zoom':{'x':40,'y':180,'w':660,'h':560},
+  'previewTime':9.95,'inks':tinks,'cam':tcam,'l2r':l2r,'reveal':json.load(open(TD+'progress.json'))})
 tvid='data:video/mp4;base64,'+base64.b64encode(open(TD+'plate.mp4','rb').read()).decode()
 s=open('app_template.html').read()
-s=s.replace('/*TEMPLATES*/[]',json.dumps(tpl)).replace('/*GLYPHS*/{}',json.dumps({'notebook-hand':glyphs,'sketchbook-hand':aglyphs,'thanks-hand':tglyphs})).replace('/*VIDEOS*/{}',json.dumps({'bday1':vid,'anniv1':avid,'thanks1':tvid}))
+s=s.replace('/*TEMPLATES*/[]',json.dumps(tpl)).replace('/*GLYPHS*/{}',json.dumps({'notebook-hand':glyphs,'sketchbook-hand':aglyphs,'thanks-print':tglyphs})).replace('/*VIDEOS*/{}',json.dumps({'bday1':vid,'anniv1':avid,'thanks2':tvid}))
 open('/home/claude/AGAMI-Name-Video-Maker.html','w').write(s)
 import hashlib
 ver=hashlib.sha1(s.encode()).hexdigest()[:10]
