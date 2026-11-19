@@ -279,7 +279,7 @@ function b64ToBlobURL(dataURL){
   return URL.createObjectURL(new Blob([u8], {type: mime}));
 }
 function loadImg(s){ return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = s; }); }
-function cleanName(s){ return s.toUpperCase().replace(/[^A-Z ]/g, '').replace(/\s+/g, ' ').trimStart(); }
+function cleanName(s){ return (T && T.mixedCase ? s.replace(/[^A-Za-z ]/g, '') : s.toUpperCase().replace(/[^A-Z ]/g, '')).replace(/\s+/g, ' ').trimStart(); }
 
 /* ---------- name layout (in the template's level/"de-rotated" space, at SC x resolution) ---------- */
 function buildNameLayer(text){
@@ -294,8 +294,8 @@ function buildNameLayer(text){
     for (let i = 0; i < chars.length; i++){
       const ch = chars[i];
       if (ch === ' '){ x += space * SC; wordStart = true; continue; }
-      const vs = set[ch]; if (!vs) continue;
-      if (wordStart){ wordLen = 0; for (let j = i; j < chars.length && /[A-Z]/.test(chars[j]); j++) wordLen++; }
+      const vs = set[ch] || set[ch.toUpperCase()] || set[ch.toLowerCase()]; if (!vs) continue;
+      if (wordStart){ wordLen = 0; for (let j = i; j < chars.length && /[A-Za-z]/.test(chars[j]); j++) wordLen++; }
       const px = (t.anchor.left || 0) + x / SC;                    // level x of this letter (left-aligned layouts)
       const ps = t.persp ? 1 + t.persp.k * (px - t.persp.x0) : 1;   // page perspective: letters shrink along the line
       const ls = ((wordStart && wordLen >= 3) ? firstScale : 1) * ps;   // small-caps look: taller first letter on real words
@@ -399,6 +399,8 @@ async function selectTemplate(id){
   T = TEMPLATES.find(t => t.id === id);
   document.querySelectorAll('.tpl').forEach(b => b.classList.toggle('on', b.dataset.id === id));
   $('suffix').textContent = T.suffix || ''; $('namelabel').textContent = T.label || 'Name on the note';
+  $('name').style.textTransform = T.mixedCase ? 'none' : 'uppercase';
+  if ($('name').value){ const v = cleanName($('name').value); $('name').value = v; nameText = v; }
   $('hint').textContent = T.help || 'Letters A–Z and spaces.'; $('hint').className = 'hint';
   $('name').maxLength = T.maxLen || 16;
   view.width = T.w; view.height = T.h;
@@ -424,7 +426,7 @@ async function selectTemplate(id){
 function updateGo(){ $('go').disabled = busy || !T || !nameText.trim(); }
 $('name').addEventListener('input', e => {
   const raw = e.target.value, clean = cleanName(raw);
-  const dropped = raw.toUpperCase().replace(/[A-Z ]/g, '');
+  const dropped = (T && T.mixedCase) ? raw.replace(/[A-Za-z ]/g, '') : raw.toUpperCase().replace(/[A-Z ]/g, '');
   nameText = clean;
   nameLayer = T ? buildNameLayer(nameText) : null;
   const h = $('hint');

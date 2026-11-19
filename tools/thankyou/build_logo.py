@@ -1,17 +1,24 @@
 import cv2, numpy as np, sys
-sys.path.insert(0,'/home/claude/t4'); from common import *
-ref=fr(241).astype(np.float32); hsv=cv2.cvtColor(fr(241),cv2.COLOR_BGR2HSV)
-g=cv2.cvtColor(fr(241),cv2.COLOR_BGR2GRAY).astype(np.float32)
+sys.path.insert(0,'/home/claude/t5'); from common import *
+P8=to_ref(fr(241),241); cv2.imwrite('P241.png',P8)
+ref=P8.astype(np.float32); hsv=cv2.cvtColor(P8,cv2.COLOR_BGR2HSV)
+g=cv2.cvtColor(P8,cv2.COLOR_BGR2GRAY).astype(np.float32)
 # ---- old logo mask: medallion + AGAMI + their raised-edge shadows
 bgl=cv2.GaussianBlur(g,(0,0),30)
 m=((hsv[...,1]>55)|(np.abs(g-bgl)>14)).astype(np.uint8)
-roi=np.zeros_like(m); poly=np.array([[30,215],[360,215],[440,400],[425,445],[160,560],[120,545],[30,450]],np.int32); cv2.fillPoly(roi,[poly],1)
+yy,xx=np.mgrid[0:H,0:W]; lvy=(M[1,0]*xx+M[1,1]*yy+M[1,2]); roi=((lvy<572)&(yy>110)&(xx<480)).astype(np.uint8)
 m*=roi
 m=cv2.morphologyEx(m,cv2.MORPH_CLOSE,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9)))
 n,lab,st,_=cv2.connectedComponentsWithStats(m); k=np.zeros_like(m)
 for j in range(1,n):
     if st[j,4]>=40: k[lab==j]=1
 old=cv2.dilate(k,cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(19,19)))
+hw=((inkmap(P8,40)>0.25)&(hsv[...,1]<90)).astype(np.uint8)          # dark handwriting (the logo is gold)
+n2,l2,st2,_=cv2.connectedComponentsWithStats(hw); prot=np.zeros_like(hw)
+for j in range(1,n2):
+    yy2,xx2=np.where(l2==j)
+    if ((M[1,0]*xx2+M[1,1]*yy2+M[1,2])>566).any(): prot[l2==j]=1
+old[cv2.dilate(prot,np.ones((7,7),np.uint8))>0]=0
 # ---- paper fill: smooth lighting interpolated from the surroundings + fine paper texture from a clean area
 def inkm(img): return cv2.dilate((inkmap(np.clip(img,0,255).astype(np.uint8),40)>0.2).astype(np.uint8),np.ones((7,7),np.uint8)).astype(np.float32)
 mask_t=np.maximum(old.astype(np.float32),inkm(ref))
@@ -24,7 +31,7 @@ def smooth_fill(img,mask):
         acc=w_ if acc is None else np.maximum(acc,w_)
     return out
 lowT=smooth_fill(ref,mask_t)
-SRC=np.float32([[1,0,330],[0,1,-60]])           # texture from the blank paper right of the logo
+SRC=np.float32([[1,0,300],[0,1,-40]])           # texture from the blank paper right of the logo
 src=cv2.warpAffine(ref,SRC,(W,H),flags=cv2.INTER_LINEAR|cv2.WARP_INVERSE_MAP,borderMode=cv2.BORDER_REFLECT)
 srcm=inkm(src); lowS=lowpass(src,srcm,6)
 hp=(src-lowS)/np.maximum(lowS,1)                 # relative texture

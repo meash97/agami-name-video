@@ -8,7 +8,7 @@ Everything runs in the browser (WebCodecs H.264 + built-in MP4 muxer). No server
 
 ## Templates
 - **Birthday · Notebook** — "___, wishing you a happiest birthday…" (type the name yourself, with or without JI)
-- **Thank You · Agami** — printed note with the AGAMI logo; type the name after "Dear" and it fills in as the pen writes
+- **Thank You · Agami** — handwritten notebook note with the AGAMI logo; type the name after "Dear" (mixed case) and it is written with the pen; ends with "Warm Regards, AGAMI" and the hand leaving
 - **Anniversary · Sketchbook** — type the whole first line (both names); the hand finishes writing, leaves, and two hearts are drawn after "Happiest Anniversary"
 
 `tools/` holds the build scripts used to prepare a template (clean plate video, handwriting alphabet, per-frame ink colour) and assemble `index.html`.
